@@ -6,4 +6,5 @@ langchain-tavily>=0.1
 langgraph-checkpoint-sqlite>=2.0
 python-dotenv>=1.0
 tavily-python>=0.5
+gradio>=4.0
 pytest>=8.0
