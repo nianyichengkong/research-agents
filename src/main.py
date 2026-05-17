@@ -3,6 +3,7 @@
 import sys
 import os
 import signal
+import uuid
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -17,6 +18,7 @@ from src.llm import create_llm
 from src.agent import create_agent_graph
 from src.tools import create_search_tools
 from src.output import save_report
+from src.memory import create_checkpointer
 
 
 @tool
@@ -36,25 +38,7 @@ def _timeout_handler(signum, frame):
     raise ResearchTimeout("调研超时，已强制停止")
 
 
-def _print_stream_event(event: dict):
-    """Print a single stream event with Thought/Action/Observation formatting."""
-    for node_name, state_update in event.items():
-        if "messages" not in state_update:
-            continue
-        for msg in state_update["messages"]:
-            if isinstance(msg, AIMessage):
-                if msg.tool_calls:
-                    for tc in msg.tool_calls:
-                        args_str = ", ".join(f"{k}={v}" for k, v in tc["args"].items())
-                        print(f"  [Action] {tc['name']}({args_str})")
-                elif msg.content:
-                    print(f"  [Thought] {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}")
-            elif isinstance(msg, ToolMessage):
-                content = msg.content
-                print(f"  [Observation] {content[:150]}{'...' if len(content) > 150 else ''}")
-
-
-def run_research(graph, topic: str, config: Config) -> dict:
+def run_research(graph, topic: str, config: Config, thread_config: dict) -> dict:
     """Run research with timeout protection and streaming output."""
     old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(config.timeout_seconds)
@@ -62,6 +46,7 @@ def run_research(graph, topic: str, config: Config) -> dict:
         all_messages = [HumanMessage(content=topic)]
         for event in graph.stream(
             {"messages": [HumanMessage(content=topic)], "search_count": 0, "iteration": 0, "topic": topic},
+            config=thread_config,
             stream_mode="updates",
         ):
             for node_name, state_update in event.items():
@@ -96,42 +81,54 @@ def main():
         tools=all_tools,
     )
 
-    graph = create_agent_graph(llm, tools=all_tools, config=config)
+    db_path = os.environ.get("DB_PATH", "research_agent.db")
+    with create_checkpointer(db_path) as checkpointer:
+        graph = create_agent_graph(llm, tools=all_tools, config=config, checkpointer=checkpointer)
 
-    print("=" * 50)
-    print("  市场调研助手 (ReAct Agent)")
-    print("  输入调研主题开始，输入 exit 退出")
-    print("=" * 50)
+        thread_id = str(uuid.uuid4())
+        thread_config = {"configurable": {"thread_id": thread_id}}
 
-    while True:
-        try:
-            user_input = input("\n> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n再见！")
-            break
+        print("=" * 50)
+        print("  市场调研助手 (ReAct Agent)")
+        print("  输入调研主题开始")
+        print("  命令: exit=退出, new=新会话")
+        print(f"  当前会话: {thread_id[:8]}...")
+        print("=" * 50)
 
-        if not user_input:
-            continue
-        if user_input.lower() in ("exit", "quit"):
-            print("再见！")
-            break
+        while True:
+            try:
+                user_input = input("\n> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n再见！")
+                break
 
-        try:
-            result = run_research(graph, user_input, config)
-        except ResearchTimeout as e:
-            print(f"\n[错误] {e}")
-            continue
-        except Exception as e:
-            print(f"\n[错误] {type(e).__name__}: {e}")
-            continue
+            if not user_input:
+                continue
+            if user_input.lower() in ("exit", "quit"):
+                print("再见！")
+                break
+            if user_input.lower() == "new":
+                thread_id = str(uuid.uuid4())
+                thread_config = {"configurable": {"thread_id": thread_id}}
+                print(f"\n已创建新会话: {thread_id[:8]}...")
+                continue
 
-        if result:
-            messages = result.get("messages", [])
-            final_message = messages[-1] if messages else None
-            if final_message and isinstance(final_message, AIMessage):
-                print(f"\n{final_message.content}")
-                path = save_report(final_message.content, topic=user_input)
-                print(f"\n报告已保存: {path}")
+            try:
+                result = run_research(graph, user_input, config, thread_config)
+            except ResearchTimeout as e:
+                print(f"\n[错误] {e}")
+                continue
+            except Exception as e:
+                print(f"\n[错误] {type(e).__name__}: {e}")
+                continue
+
+            if result:
+                messages = result.get("messages", [])
+                final_message = messages[-1] if messages else None
+                if final_message and isinstance(final_message, AIMessage):
+                    print(f"\n{final_message.content}")
+                    path = save_report(final_message.content, topic=user_input)
+                    print(f"\n报告已保存: {path}")
 
 
 if __name__ == "__main__":
