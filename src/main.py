@@ -90,9 +90,13 @@ def main():
 
         print("=" * 50)
         print("  市场调研助手 (ReAct Agent)")
-        print("  输入调研主题开始")
-        print("  命令: exit=退出, new=新会话")
+        print(f"  模型: glm-4 | 最大轮次: {config.max_iterations} | 搜索上限: {config.max_searches}")
         print(f"  当前会话: {thread_id[:8]}...")
+        print("-" * 50)
+        print("  输入调研主题开始调研")
+        print("  help  - 查看帮助")
+        print("  new   - 新建会话")
+        print("  exit  - 退出程序")
         print("=" * 50)
 
         while True:
@@ -111,6 +115,14 @@ def main():
                 thread_id = str(uuid.uuid4())
                 thread_config = {"configurable": {"thread_id": thread_id}}
                 print(f"\n已创建新会话: {thread_id[:8]}...")
+                continue
+            if user_input.lower() == "help":
+                print("\n  使用说明:")
+                print("  - 直接输入调研主题（如：中国新能源汽车市场）开始调研")
+                print("  - 调研完成后可以继续追问（如：补充比亚迪的竞品分析）")
+                print("  - new  开始新会话（清除上下文）")
+                print("  - exit 退出程序")
+                print(f"  - 报告自动保存到 output/ 目录")
                 continue
 
             try:
