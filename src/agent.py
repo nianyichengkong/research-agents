@@ -49,6 +49,7 @@ def create_agent_graph(llm, tools: list, config: Config):
     def tool_node(state: AgentState) -> dict:
         last_message = state["messages"][-1]
         tool_messages = []
+        search_increment = 0
         for tc in last_message.tool_calls:
             tool = tool_map.get(tc["name"])
             if tool:
@@ -56,11 +57,16 @@ def create_agent_graph(llm, tools: list, config: Config):
                 tool_messages.append(
                     ToolMessage(content=str(result), tool_call_id=tc["id"])
                 )
+                if "search" in tc["name"]:
+                    search_increment += 1
             else:
                 tool_messages.append(
                     ToolMessage(content=f"Error: tool '{tc['name']}' not found", tool_call_id=tc["id"])
                 )
-        return {"messages": tool_messages}
+        update = {"messages": tool_messages}
+        if search_increment:
+            update["search_count"] = state.get("search_count", 0) + search_increment
+        return update
 
     def should_continue(state: AgentState) -> str:
         last_message = state["messages"][-1]
@@ -69,6 +75,10 @@ def create_agent_graph(llm, tools: list, config: Config):
             return END
 
         if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+            if state.get("search_count", 0) >= config.max_searches:
+                search_calls = [tc for tc in last_message.tool_calls if "search" in tc["name"]]
+                if search_calls and len(search_calls) == len(last_message.tool_calls):
+                    return END
             return "tools"
 
         return END

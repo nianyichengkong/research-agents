@@ -85,3 +85,29 @@ class TestAgentGraph:
         result = graph.invoke({"messages": [HumanMessage(content="loop test")], "search_count": 0, "iteration": 0, "topic": "测试"})
 
         assert mock_llm.invoke.call_count == config.max_iterations
+
+    def test_stops_search_at_max_searches(self):
+        """Graph stops calling search tools when search count reaches limit."""
+        from src.agent import create_agent_graph
+        from src.config import Config
+
+        config = Config(zhipu_api_key="fake", tavily_api_key="fake", max_iterations=10, max_searches=2)
+
+        mock_search = MagicMock()
+        mock_search.name = "tavily_search"
+        mock_search.invoke.return_value = "search result"
+
+        mock_llm = MagicMock()
+        # LLM keeps wanting to search, but should be blocked after 2 searches
+        mock_llm.invoke.side_effect = [
+            AIMessage(content="", tool_calls=[{"name": "tavily_search", "args": {"query": "q1"}, "id": "c1"}]),
+            AIMessage(content="", tool_calls=[{"name": "tavily_search", "args": {"query": "q2"}, "id": "c2"}]),
+            # After 2 searches, should_continue forces END even though LLM wants more
+            AIMessage(content="", tool_calls=[{"name": "tavily_search", "args": {"query": "q3"}, "id": "c3"}]),
+        ]
+
+        graph = create_agent_graph(mock_llm, tools=[mock_search], config=config)
+        result = graph.invoke({"messages": [HumanMessage(content="test")], "search_count": 0, "iteration": 0, "topic": "test"})
+
+        # Search tool should only be invoked max_searches times
+        assert mock_search.invoke.call_count == config.max_searches

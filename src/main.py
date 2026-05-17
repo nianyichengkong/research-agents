@@ -2,6 +2,7 @@
 
 import sys
 import os
+import signal
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -15,6 +16,7 @@ from src.config import Config
 from src.llm import create_llm
 from src.agent import create_agent_graph
 from src.tools import create_search_tools
+from src.output import save_report
 
 
 @tool
@@ -24,6 +26,31 @@ def calculator(expression: str) -> str:
         return str(eval(expression))
     except Exception as e:
         return f"Error: {e}"
+
+
+class ResearchTimeout(Exception):
+    pass
+
+
+def _timeout_handler(signum, frame):
+    raise ResearchTimeout("调研超时，已强制停止")
+
+
+def run_research(graph, topic: str, config: Config) -> dict:
+    """Run research with timeout protection."""
+    old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
+    signal.alarm(config.timeout_seconds)
+    try:
+        result = graph.invoke({
+            "messages": [HumanMessage(content=topic)],
+            "search_count": 0,
+            "iteration": 0,
+            "topic": topic,
+        })
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
+    return result
 
 
 def main():
@@ -58,15 +85,17 @@ def main():
             print("再见！")
             break
 
-        result = graph.invoke({
-            "messages": [HumanMessage(content=user_input)],
-            "search_count": 0,
-            "iteration": 0,
-            "topic": user_input,
-        })
+        try:
+            result = run_research(graph, user_input, config)
+        except ResearchTimeout as e:
+            print(f"\n[错误] {e}")
+            continue
 
         final_message = result["messages"][-1]
         print(f"\n{final_message.content}")
+
+        path = save_report(final_message.content, topic=user_input)
+        print(f"\n报告已保存: {path}")
 
 
 if __name__ == "__main__":
