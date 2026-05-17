@@ -44,11 +44,12 @@ def init_agent():
     )
 
     db_path = os.environ.get("DB_PATH", "/tmp/research_agent.db")
-    from src.memory import create_checkpointer
-    checkpointer = create_checkpointer(db_path)
-    ctx = checkpointer.__enter__()
+    import sqlite3
+    from langgraph.checkpoint.sqlite import SqliteSaver
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
 
-    graph = create_agent_graph(llm, tools=all_tools, config=config, checkpointer=ctx)
+    graph = create_agent_graph(llm, tools=all_tools, config=config, checkpointer=checkpointer)
     return graph, config
 
 
@@ -132,8 +133,10 @@ with gradio.Blocks(title="市场调研助手") as demo:
         yield history, "", thread_id
 
         for response in respond(message, history, thread_id):
-            history[-1] = {"role": "user", "content": message}
-            history.append({"role": "assistant", "content": response})
+            if history and history[-1]["role"] == "assistant":
+                history[-1] = {"role": "assistant", "content": response}
+            else:
+                history.append({"role": "assistant", "content": response})
             yield history, "", thread_id
 
     msg_input.submit(handle_submit, [msg_input, chatbot, thread_state], [chatbot, msg_input, thread_state])
