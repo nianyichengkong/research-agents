@@ -9,7 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from dotenv import load_dotenv
 load_dotenv()
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from src.config import Config
@@ -36,21 +36,52 @@ def _timeout_handler(signum, frame):
     raise ResearchTimeout("调研超时，已强制停止")
 
 
+def _print_stream_event(event: dict):
+    """Print a single stream event with Thought/Action/Observation formatting."""
+    for node_name, state_update in event.items():
+        if "messages" not in state_update:
+            continue
+        for msg in state_update["messages"]:
+            if isinstance(msg, AIMessage):
+                if msg.tool_calls:
+                    for tc in msg.tool_calls:
+                        args_str = ", ".join(f"{k}={v}" for k, v in tc["args"].items())
+                        print(f"  [Action] {tc['name']}({args_str})")
+                elif msg.content:
+                    print(f"  [Thought] {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}")
+            elif isinstance(msg, ToolMessage):
+                content = msg.content
+                print(f"  [Observation] {content[:150]}{'...' if len(content) > 150 else ''}")
+
+
 def run_research(graph, topic: str, config: Config) -> dict:
-    """Run research with timeout protection."""
+    """Run research with timeout protection and streaming output."""
     old_handler = signal.signal(signal.SIGALRM, _timeout_handler)
     signal.alarm(config.timeout_seconds)
     try:
-        result = graph.invoke({
-            "messages": [HumanMessage(content=topic)],
-            "search_count": 0,
-            "iteration": 0,
-            "topic": topic,
-        })
+        all_messages = [HumanMessage(content=topic)]
+        for event in graph.stream(
+            {"messages": [HumanMessage(content=topic)], "search_count": 0, "iteration": 0, "topic": topic},
+            stream_mode="updates",
+        ):
+            for node_name, state_update in event.items():
+                if "messages" in state_update:
+                    for msg in state_update["messages"]:
+                        all_messages.append(msg)
+                        if isinstance(msg, AIMessage):
+                            if msg.tool_calls:
+                                for tc in msg.tool_calls:
+                                    args_str = ", ".join(f"{k}={v}" for k, v in tc["args"].items())
+                                    print(f"  [Action] {tc['name']}({args_str})")
+                            elif msg.content:
+                                print(f"  [Thought] {msg.content[:100]}{'...' if len(msg.content) > 100 else ''}")
+                        elif isinstance(msg, ToolMessage):
+                            content = msg.content
+                            print(f"  [Observation] {content[:150]}{'...' if len(content) > 150 else ''}")
     finally:
         signal.alarm(0)
         signal.signal(signal.SIGALRM, old_handler)
-    return result
+    return {"messages": all_messages}
 
 
 def main():
@@ -90,12 +121,17 @@ def main():
         except ResearchTimeout as e:
             print(f"\n[错误] {e}")
             continue
+        except Exception as e:
+            print(f"\n[错误] {type(e).__name__}: {e}")
+            continue
 
-        final_message = result["messages"][-1]
-        print(f"\n{final_message.content}")
-
-        path = save_report(final_message.content, topic=user_input)
-        print(f"\n报告已保存: {path}")
+        if result:
+            messages = result.get("messages", [])
+            final_message = messages[-1] if messages else None
+            if final_message and isinstance(final_message, AIMessage):
+                print(f"\n{final_message.content}")
+                path = save_report(final_message.content, topic=user_input)
+                print(f"\n报告已保存: {path}")
 
 
 if __name__ == "__main__":
