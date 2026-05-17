@@ -8,9 +8,9 @@ class Config:
     tavily_api_key: str
     langchain_api_key: str = ""
     langchain_project: str = "research-agent"
-    max_iterations: int = 10
-    max_searches: int = 6
-    timeout_seconds: int = 300
+    max_iterations: int = 15
+    max_searches: int = 8
+    timeout_seconds: int = 600
 
     @classmethod
     def load(cls) -> "Config":
@@ -27,7 +27,7 @@ class Config:
             tavily_api_key=tavily_api_key,
             langchain_api_key=os.environ.get("LANGCHAIN_API_KEY", ""),
             langchain_project=os.environ.get("LANGCHAIN_PROJECT", "research-agent"),
-            max_iterations=int(os.environ.get("MAX_ITERATIONS", "10")),
-            max_searches=int(os.environ.get("MAX_SEARCHES", "6")),
-            timeout_seconds=int(os.environ.get("TIMEOUT_SECONDS", "300")),
+            max_iterations=int(os.environ.get("MAX_ITERATIONS", "15")),
+            max_searches=int(os.environ.get("MAX_SEARCHES", "8")),
+            timeout_seconds=int(os.environ.get("TIMEOUT_SECONDS", "600")),
         )

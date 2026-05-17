@@ -8,7 +8,7 @@ def create_search_tools(tavily_api_key: str) -> list:
     from langchain_tavily import TavilySearch
 
     tavily_search = TavilySearch(
-        max_results=3,
+        max_results=5,
         tavily_api_key=tavily_api_key,
     )
 

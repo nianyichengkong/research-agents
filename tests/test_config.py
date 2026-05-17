@@ -31,9 +31,9 @@ class TestConfigLoad:
             from src.config import Config
             config = Config.load()
 
-            assert config.max_iterations == 10
-            assert config.max_searches == 6
-            assert config.timeout_seconds == 300
+            assert config.max_iterations == 15
+            assert config.max_searches == 8
+            assert config.timeout_seconds == 600
 
     def test_safety_bounds_override_from_env(self):
         with patch.dict(os.environ, {
