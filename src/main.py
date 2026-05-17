@@ -14,6 +14,7 @@ from langchain_core.tools import tool
 from src.config import Config
 from src.llm import create_llm
 from src.agent import create_agent_graph
+from src.tools import create_search_tools
 
 
 @tool
@@ -27,15 +28,17 @@ def calculator(expression: str) -> str:
 
 def main():
     config = Config.load()
+    search_tools = create_search_tools(config.tavily_api_key)
+    all_tools = search_tools + [calculator]
 
     llm = create_llm(
         api_key=config.zhipu_api_key,
         base_url="https://open.bigmodel.cn/api/paas/v4",
         model="glm-4",
-        tools=[calculator],
+        tools=all_tools,
     )
 
-    graph = create_agent_graph(llm, tools=[calculator], config=config)
+    graph = create_agent_graph(llm, tools=all_tools, config=config)
 
     print("=" * 50)
     print("  市场调研助手 (ReAct Agent)")
