@@ -7,4 +7,6 @@ langgraph-checkpoint-sqlite>=2.0
 python-dotenv>=1.0
 tavily-python>=0.5
 gradio>=4.0
+chromadb>=0.4
+langchain-experimental>=0.3
 pytest>=8.0
